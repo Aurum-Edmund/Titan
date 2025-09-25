@@ -1,0 +1,40 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.env
+.venv/
+
+# IDE / editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Checkpoints and large model files
+runs/
+checkpoints/
+outputs/
+*.pt
+*.bin
+*.ckpt
+*.safetensors
+
+# Logs and datasets
+logs/
+wandb/
+*.log
+*.tmp
+*.cache/
+
+# Generated data
+*.jsonl.tmp
+*.csv.tmp
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Local configs
+*.local.yaml
