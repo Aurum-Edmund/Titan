@@ -1,0 +1,29 @@
+﻿paths:
+  train_jsonl: data/train.jsonl
+  val_jsonl:   data/val.jsonl
+  out_dir:     runs/checkpoints/titan_lora
+
+model:
+  tokenizer: tokenizer_local_200k
+
+run:
+  steps: 800
+  batch_size: 16
+  sequence_length: 128
+  learning_rate: 5.0e-5
+  grad_accumulation: 2
+  device: cuda
+  dtype: fp16
+  amp: true
+  grad_clip: 1.0
+  log_every: 2
+  eval_every: 5
+  save_every: 5
+  eval_limit: 100
+  num_workers: 0
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+  quantize: true

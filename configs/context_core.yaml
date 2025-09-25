@@ -1,0 +1,33 @@
+﻿paths:
+  train_jsonl: data/context_train.jsonl
+  val_jsonl:   data/context_val.jsonl
+  out_dir:     runs/checkpoints/context_core_v0
+
+model:
+  d: 384
+  n_layers: 12
+  n_heads: 6
+  tokenizer: tokenizer_local
+  num_topics: 16
+  num_intents: 8
+  dropout: 0.1
+  max_position_embeddings: 4096
+
+run:
+  steps: 8000
+  batch_size: 32
+  max_len: 256
+  lr_peak: 3.0e-4
+  warmup: 500
+  min_lr: 2.0e-5
+  weight_decay: 0.05
+  grad_accum: 1
+  amp: true
+  ema: false
+  ema_decay: 0.999
+  log_every: 50
+  eval_every: 500
+  save_every: 1000
+  device: cuda
+  dtype: fp16
+  num_workers: 0
