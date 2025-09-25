@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Subset
 from transformers import AutoTokenizer
 
 from src.titan.context_core import ContextCore, ContextHeadDims
-from src.titan.train_context_core import ContextJsonlDS, collate
+from src.titan.train_context import ContextJsonlDataset as ContextJsonlDS, collate
 
 BINARY_KEYS = ["math_scent", "code_scent", "route_math", "route_code", "route_lang"]
 MULTI_KEYS = ["data_format", "topic", "intent"]

@@ -11,6 +11,7 @@ from transformers import AutoTokenizer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from titan.core import TitanModel  # adjust if your path differs
+from titan.titan_finetune import inject_lora
 
 
 
@@ -70,6 +71,7 @@ def main():
     ap.add_argument("--layers", type=int, required=True)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--dtype", default="fp16", choices=["fp16", "fp32", "bf16"])
+    ap.add_argument("--lora", default=None, help="Optional LoRA adapter checkpoint")
     args = ap.parse_args()
 
     dtype_map = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
@@ -87,6 +89,20 @@ def main():
     missing, unexpected = model.load_state_dict(sd, strict=False)
     if missing or unexpected:
         print(f"[SD] missing={len(missing)} unexpected={len(unexpected)}", file=sys.stderr)
+
+    if args.lora:
+        payload = torch.load(args.lora, map_location='cpu')
+        meta = payload.get('lora_hyper') or {}
+        rank = int(meta.get('rank', 16))
+        alpha = int(meta.get('alpha', 32))
+        dropout = float(meta.get('dropout', 0.0))
+        quantize = False
+        inject_lora(model, rank, alpha, dropout, quantize)
+        model.to(device=device, dtype=dtype)
+        lora_state = payload.get('lora_state', payload)
+        miss_lora, unexp_lora = model.load_state_dict(lora_state, strict=False)
+        if miss_lora or unexp_lora:
+            print(f"[LoRA] missing={len(miss_lora)} unexpected={len(unexp_lora)}", file=sys.stderr)
     ensure_vocab_match(model, tok)
 
     out = generate_greedy(model, tok, args.prompt, max_new=args.max_new, device=device)

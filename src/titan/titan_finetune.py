@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from src.titan.core import TitanModel  # noqa: E402
 from src.titan.train_titan import (  # noqa: E402
+    CosineWithWarmup,
     JsonlLM,
     count_params,
     ensure_vocab,
@@ -54,6 +56,10 @@ class RunCfg:
     batch_size: int = 16
     sequence_length: int = 256
     learning_rate: float = 1e-4
+    warmup_percent: float = 0.10
+    min_lr_percent: float = 0.06
+    warmup_steps: Optional[int] = None
+    min_learning_rate: Optional[float] = None
     grad_accumulation: int = 1
     device: str = "cuda"
     dtype: str = "fp16"  # fp16|bf16|fp32
@@ -64,6 +70,7 @@ class RunCfg:
     save_every: int = 200
     num_workers: int = 0
     eval_limit: Optional[int] = None
+    resume_from: Optional[str] = None
 
 
 @dataclass
@@ -232,6 +239,38 @@ def parse_config(cfg: Dict[str, Dict[str, object]]):
     return paths, model_cfg, run_cfg, lora_cfg
 
 
+
+def _materialize_text_jsonl(path: str) -> str:
+    src = Path(path)
+    with src.open('r', encoding='utf-8') as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if 'text' in obj:
+                return str(src)
+            if 'prompt' in obj and 'response' in obj:
+                flatten_path = src.with_name(src.stem + '_text.jsonl')
+                if not flatten_path.exists() or flatten_path.stat().st_mtime < src.stat().st_mtime:
+                    with src.open('r', encoding='utf-8') as fin, flatten_path.open('w', encoding='utf-8') as fout:
+                        for raw in fin:
+                            raw = raw.strip()
+                            if not raw:
+                                continue
+                            data = json.loads(raw)
+                            if 'prompt' in data and 'response' in data:
+                                combined = f"{data['prompt'].rstrip()}\n{data['response'].lstrip()}"
+                                fout.write(json.dumps({'text': combined}, ensure_ascii=False) + '\n')
+                            elif 'text' in data:
+                                fout.write(json.dumps({'text': data['text']}, ensure_ascii=False) + '\n')
+                            else:
+                                raise ValueError(f"Unsupported JSON keys in {src}: {list(data.keys())}")
+                return str(flatten_path)
+            raise ValueError(f"Unsupported JSON keys in {src}: {list(obj.keys())}")
+    raise ValueError(f"Empty dataset: {src}")
+
+
 def build_dataloaders(
     paths: PathsCfg,
     tokenizer,
@@ -242,7 +281,8 @@ def build_dataloaders(
     eval_limit: Optional[int] = None,
 ) -> tuple[DataLoader, Optional[DataLoader], int, int]:
     pad_id = tokenizer.pad_token_id or 0
-    ds_tr = JsonlLM(paths.train_jsonl, tokenizer, max_len=seq_len)
+    train_path = _materialize_text_jsonl(paths.train_jsonl)
+    ds_tr = JsonlLM(train_path, tokenizer, max_len=seq_len)
     dl_tr = DataLoader(
         ds_tr,
         batch_size=batch_size,
@@ -256,7 +296,8 @@ def build_dataloaders(
     eval_examples = 0
     dl_va = None
     if paths.val_jsonl:
-        ds_va = JsonlLM(paths.val_jsonl, tokenizer, max_len=seq_len)
+        val_path = _materialize_text_jsonl(paths.val_jsonl)
+        ds_va = JsonlLM(val_path, tokenizer, max_len=seq_len)
         eval_examples = len(ds_va)
         limit_int = None
         if eval_limit is not None:
@@ -295,37 +336,75 @@ def train(
     resume_payload: Optional[Dict[str, object]] = None
     resume_step = 0
 
-    if resume_lora is None:
-        candidates = sorted(out_dir.glob("titan_lora_step*.pt"))
-        for candidate in reversed(candidates):
+    def _load_lora_checkpoint(path: Path) -> tuple[str, Dict[str, object], int]:
+        payload = torch.load(path, map_location="cpu")
+        stem = path.stem
+        fallback = 0
+        if "_step" in stem:
+            try:
+                fallback = int(stem.split("_step")[-1])
+            except ValueError:
+                fallback = 0
+        step = int(payload.get("run_step", fallback))
+        return str(path), payload, step
+
+    manual_resume = getattr(run_cfg, "resume_from", None) or resume_lora
+    if manual_resume:
+        target = Path(manual_resume)
+        if target.exists():
+            try:
+                resume_lora, resume_payload, resume_step = _load_lora_checkpoint(target)
+                print(f"[resume] using explicit checkpoint {resume_lora}")
+            except Exception as exc:
+                print(f"[resume] failed to load {target} ({exc}); starting fresh")
+                resume_lora = None
+                resume_payload = None
+                resume_step = 0
+                manual_resume = None
+        else:
+            print(f"[resume] specified checkpoint {target} not found; starting fresh")
+            resume_lora = None
+            manual_resume = None
+
+    if manual_resume is None:
+        def _step_from_path(p: Path) -> int:
+            stem = p.stem
+            if "_step" in stem:
+                try:
+                    return int(stem.split("_step")[-1])
+                except ValueError:
+                    return -1
+            return -1
+
+        candidates = sorted(out_dir.glob("titan_lora_step*.pt"), key=_step_from_path, reverse=True)
+        for candidate in candidates:
             try:
                 payload = torch.load(candidate, map_location="cpu")
-            except Exception:
+            except Exception as exc:
+                print(f"[resume] skipping {candidate} ({exc})")
                 continue
             hyper = payload.get("lora_hyper") or {}
             if hyper.get("rank") == lora_cfg.rank and hyper.get("alpha") == lora_cfg.alpha:
                 resume_lora = str(candidate)
                 resume_payload = payload
-                resume_step = int(payload.get("run_step", 0))
+                resume_step = int(payload.get("run_step", _step_from_path(candidate)))
                 print(f"[resume] auto-detected {resume_lora}")
                 break
         else:
             if candidates:
                 print("[resume] found LoRA checkpoints but rank/alpha mismatch; starting fresh")
-    else:
+                resume_lora = None
+
+    if resume_lora and resume_payload is None:
         try:
-            resume_payload = torch.load(resume_lora, map_location="cpu")
-            resume_step = int(resume_payload.get("run_step", 0))
-        except FileNotFoundError:
-            print(f"[resume] specified checkpoint {resume_lora} not found; starting fresh")
-            resume_lora = None
-            resume_payload = None
-            resume_step = 0
+            resume_lora, resume_payload, resume_step = _load_lora_checkpoint(Path(resume_lora))
         except Exception as exc:
             print(f"[resume] failed to load {resume_lora} ({exc}); starting fresh")
             resume_lora = None
             resume_payload = None
             resume_step = 0
+
+
 
     tokenizer = AutoTokenizer.from_pretrained(model_cfg.tokenizer)
     if tokenizer.pad_token_id is None:
@@ -407,6 +486,19 @@ def train(
         except Exception as exc:
             print(f"[resume] failed to restore optimizer state ({exc}); continuing with fresh optimizer")
 
+    warmup_steps = run_cfg.warmup_steps if run_cfg.warmup_steps is not None else max(1, int(run_cfg.steps * run_cfg.warmup_percent))
+    min_lr = run_cfg.min_learning_rate if run_cfg.min_learning_rate is not None else run_cfg.learning_rate * run_cfg.min_lr_percent
+    min_lr = float(max(min_lr, 1e-8))
+    scheduler = CosineWithWarmup(
+        optimizer,
+        peak=run_cfg.learning_rate,
+        warmup=warmup_steps,
+        total=run_cfg.steps,
+        min_lr=min_lr,
+        start_t=resume_step,
+    )
+    print(f"[sched] warmup_steps={warmup_steps} min_lr={min_lr:.2e}")
+
     use_scaler = use_amp and compute_dtype == torch.float16
     scaler = torch.amp.GradScaler(device=device.type) if use_scaler else None
     if scaler and resume_payload and "scaler" in resume_payload:
@@ -423,6 +515,7 @@ def train(
     dl_tr_iter = iter(dl_tr)
     last_log_time = time.time()
     last_log_step = resume_step
+    lr_now = optimizer.param_groups[0].get("lr", run_cfg.learning_rate)
 
     for step in range(resume_step + 1, total_steps + 1):
         optimizer.zero_grad(set_to_none=True)
@@ -455,6 +548,7 @@ def train(
         else:
             optimizer.step()
 
+        lr_now = scheduler.step()
         tokens_seen += tokens_per_step
 
         should_log = run_cfg.log_every and (step - last_log_step) >= run_cfg.log_every
@@ -464,14 +558,18 @@ def train(
             tokens_processed = tokens_per_step * steps_processed
             tok_per_s = tokens_processed / max(elapsed, 1e-6)
             progress = 100.0 * step / total_steps
-            lr = optimizer.param_groups[0].get("lr", run_cfg.learning_rate)
             mean_loss = sum(accum_losses) / len(accum_losses)
             print(
-                f"[step {step:6d}/{total_steps}] loss={mean_loss:.4f} lr={lr:.2e} "
+                f"[step {step:6d}/{total_steps}] loss={mean_loss:.4f} lr={lr_now:.2e} "
                 f"tok/s={tok_per_s:,.0f} progress={progress:5.1f}% tokens={tokens_seen:,}"
             )
             last_log_time = time.time()
             last_log_step = step
+
+        should_save = ((run_cfg.save_every and run_cfg.save_every > 0 and step % run_cfg.save_every == 0) or step == total_steps)
+        if should_save:
+            save_path = save_lora_checkpoint(out_dir, step, base_ckpt, cfg_path, lora_cfg, model, optimizer, scaler, tokens_seen)
+            print(f"[save] {save_path}  (step {step}/{total_steps})")
 
         should_eval = False
         if dl_va is not None:
@@ -490,11 +588,6 @@ def train(
             model.train()
             if device.type == "cuda":
                 torch.cuda.synchronize(device=device)
-
-        should_save = ((run_cfg.save_every and run_cfg.save_every > 0 and step % run_cfg.save_every == 0) or step == total_steps)
-        if should_save:
-            save_path = save_lora_checkpoint(out_dir, step, base_ckpt, cfg_path, lora_cfg, model, optimizer, scaler, tokens_seen)
-            print(f"[save] {save_path}  (step {step}/{total_steps})")
 
 
 def main() -> None:

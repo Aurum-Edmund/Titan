@@ -7,7 +7,7 @@ model:
   tokenizer: tokenizer_local_200k
 
 run:
-  steps: 800
+  steps: 10000
   batch_size: 16
   sequence_length: 128
   learning_rate: 5.0e-5
@@ -17,10 +17,11 @@ run:
   amp: true
   grad_clip: 1.0
   log_every: 2
-  eval_every: 5
-  save_every: 5
-  eval_limit: 100
+  eval_every: 500
+  save_every: 500
+  eval_limit: 500
   num_workers: 0
+  resume_from: null # runs/checkpoints/titan_lora/titan_lora_step1500.pt
 
 lora:
   rank: 16
