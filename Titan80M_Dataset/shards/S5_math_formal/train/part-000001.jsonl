@@ -1,0 +1,1 @@
+{"text": "<|bos|>\n<|system|>\nBe precise. Prefer symbols + a short sentence.\n<|user|>\nU={x,y,z,u,v}, A={u,y,z,x,v}, B={v,y}. Compute A∪B, A∩B, and A\\B.\n<|assistant|>\nA∪B={u,v,x,y,z}, A∩B={v,y}, A\\B={u,x,z}.\n<|eos|>"}

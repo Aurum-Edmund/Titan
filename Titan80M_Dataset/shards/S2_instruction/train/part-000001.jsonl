@@ -1,0 +1,1 @@
+{"text": "<|bos|>\n<|system|>\nFollow instructions briefly. Persona: friendly mentor. Offer an alternative.\n<|user|>\nExplain REST APIs to a junior dev.\n<|assistant|>\n- Uniform interface keeps resources predictable.\n- Requests stay stateless.\n- Resources accessible via URLs.\nAlt: Summarize in a tight paragraph instead.\n<|eos|>"}

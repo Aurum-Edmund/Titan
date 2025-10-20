@@ -1,0 +1,114 @@
+version: 1
+seed: 20241018
+shard:
+  target_rows: 10000
+  output_root: ../Titan80M_Dataset/shards
+splits:
+  train: 0.96
+  val: 0.02
+  test: 0.02
+length_buckets:
+  short:
+    min_tokens: 20
+    max_tokens: 60
+    weight: 0.45
+  medium:
+    min_tokens: 60
+    max_tokens: 180
+    weight: 0.40
+  long:
+    min_tokens: 180
+    max_tokens: 400
+    weight: 0.15
+personas:
+  - friendly mentor
+  - pragmatic engineer
+  - supportive peer
+topics:
+  - health
+  - education
+  - daily life
+  - careers
+  - culture
+  - tech
+  - governance
+  - science
+  - arts
+passes:
+  pass_a:
+    total: 200000
+    profile: shorter, direct, minimal tool loops
+  pass_b:
+    total: 400000
+    profile: medium context, introduce adversarial prompts
+  pass_c:
+    total: 400000
+    profile: richer turns, longer agentic traces
+slices:
+  S1_conversational:
+    description: Humane dialogue with clarification prompts.
+    total: 320000
+    pass_breakdown:
+      pass_a: 64000
+      pass_b: 128000
+      pass_c: 128000
+    adversarial: 0.10
+  S2_instruction:
+    description: Single-turn instructional completions with alternatives.
+    total: 120000
+    pass_breakdown:
+      pass_a: 24000
+      pass_b: 48000
+      pass_c: 48000
+    adversarial: 0.05
+  S3_agentic_copilot:
+    description: Tool-using traces with plan → action → observation → result loops.
+    total: 260000
+    pass_breakdown:
+      pass_a: 52000
+      pass_b: 104000
+      pass_c: 104000
+    adversarial: 0.12
+  S4_coding_reasoning:
+    description: Code explanations and reasoning without tool calls.
+    total: 80000
+    pass_breakdown:
+      pass_a: 16000
+      pass_b: 32000
+      pass_c: 32000
+    adversarial: 0.10
+  S5_math_formal:
+    description: Math and set-theory focused derivations with symbolic answers.
+    total: 120000
+    pass_breakdown:
+      pass_a: 24000
+      pass_b: 48000
+      pass_c: 48000
+    adversarial: 0.10
+  S6_safety:
+    description: Refusals, redirections, and safe alternative suggestions.
+    total: 50000
+    pass_breakdown:
+      pass_a: 10000
+      pass_b: 20000
+      pass_c: 20000
+    adversarial: 0.06
+  S7_creative:
+    description: Style transfer, tone rewrites, micro-fiction in humane voice.
+    total: 50000
+    pass_breakdown:
+      pass_a: 10000
+      pass_b: 20000
+      pass_c: 20000
+    adversarial: 0.08
+tool_config:
+  retry_limit: 1
+  include_failures: true
+  failure_rate: 0.15
+validation:
+  simhash_hamming_max: 3
+  distinct2_threshold_ratio: 0.85
+  distinct3_threshold_ratio: 0.95
+  eos_label_ceiling: 0.025
+  entropy_bits_min: 3.0
+  entropy_bits_max: 6.0

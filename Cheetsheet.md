@@ -1,4 +1,11 @@
-﻿
+Setup (PowerShell):
+python -m venv .venv
+. .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Generate Titan80M dataset:
+python tools\make_titan80m_dataset.py --cfg Titan80M_Dataset\meta\sampling_config_v1.yaml --out Titan80M_Dataset\shards --workers 8
+
 Train:
 python -m src.titan.train_titan --config configs\titan_100m.yaml
 
@@ -71,29 +78,36 @@ python -m src.titan.titan_finetune `
 
 # Generate Alphabet_digits:
 python -m py_compile tools\gen_alphabet_digits_dataset.py
-python tools/gen_alphabet_digits_dataset.py data/alphabet_digits.jsonl --count 1_000_000
+python tools\gen_alphabet_digits_dataset.py data\alphabet_digits.jsonl --count 1_000_000
 
 python tools\split_train_val.py --in_path data\alphabet_digits.jsonl `
   --val_frac 0.1 --dedup none `
   --train_out data\train.jsonl --val_out data\val.jsonl
 
 # Generate Alphabet_Digits_Definitions:
-python tools/gen_alpha_digit_definitions.py data/letter_digit_defs.jsonl --count 1000000
+python tools\gen_alpha_digit_definitions.py data\letter_digit_defs.jsonl --count 1000000
 
 python tools\split_train_val.py --in_path data\letter_digit_defs.jsonl `
   --val_frac 0.1 --dedup none `
   --train_out data\train.jsonl --val_out data\val.jsonl
 
 # Generate Symbols Dataset:
-python tools/gen_symbol_dataset.py data/symbols.jsonl --count 1000000
+python tools\gen_symbol_dataset.py data\symbols.jsonl --count 1000000
 
 python tools\split_train_val.py --in_path data\symbols.jsonl `
   --val_frac 0.1 --dedup none `
   --train_out data\train.jsonl --val_out data\val.jsonl
 
 # Generate is verb use Dataset:
-python tools/gen_is_verb_dataset.py data/is_verb.jsonl --count 1000000
+python tools\gen_is_verb_dataset.py data\is_verb.jsonl --count 1000000
 
 python tools\split_train_val.py --in_path data\is_verb.jsonl `
+  --val_frac 0.1 --dedup none `
+  --train_out data\train.jsonl --val_out data\val.jsonl
+
+# Mix dataset is verb, letter, numbers defs :
+python tools\mix_curriculum.py data\mixed_train.jsonl --count 1000000
+
+python tools\split_train_val.py --in_path data\mixed_train.jsonl `
   --val_frac 0.1 --dedup none `
   --train_out data\train.jsonl --val_out data\val.jsonl

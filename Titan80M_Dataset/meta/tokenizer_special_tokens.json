@@ -1,0 +1,16 @@
+{
+  "additional_special_tokens": [
+    "<|bos|>",
+    "<|eos|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|agent|>",
+    "<|action|>",
+    "<|observation|>",
+    "<|result|>",
+    "<|tool_error|>",
+    "<|scratch|>"
+  ],
+  "pad_token": "<|pad|>"
+}

@@ -1,0 +1,9 @@
+Titan 80M Synthetic Dataset
+Copyright 2025 Titan
+
+This dataset is fully synthetic and provided for research and development.
+You may copy, modify, and distribute the contents for any lawful purpose,
+provided that you clearly attribute Titan as the source of the dataset
+and do not misrepresent synthetic content as human-authored ground truth.
+
+Redistribution must preserve this notice. No warranty is expressed or implied.

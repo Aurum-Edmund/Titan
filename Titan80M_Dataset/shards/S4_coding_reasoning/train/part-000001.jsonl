@@ -1,0 +1,1 @@
+{"text": "<|bos|>\n<|system|>\nExplain briefly, show final code only.\n<|user|>\nProvide a SQL snippet for the described task and explain briefly.\n<|assistant|>\n```sql\nSELECT customer_id, SUM(total) AS total_spent\nFROM orders\nGROUP BY customer_id\nHAVING SUM(total) > 500;\n```\n<|eos|>"}
